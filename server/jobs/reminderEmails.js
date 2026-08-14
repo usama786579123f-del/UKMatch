@@ -1,5 +1,6 @@
 const Order = require('../models/Order');
 const { sendEmail } = require('../services/emailService');
+const deliveryReminderEmail = require('../templates/deliveryReminderEmail');
 const logger = require('../utils/logger');
 
 /**
@@ -29,18 +30,15 @@ const runDeliveryReminders = async () => {
     }
 
     for (const order of orders) {
+      if (!order.seller?.email) continue;
+
       await sendEmail({
         to: order.seller.email,
-        subject: `Reminder: upload your ticket for ${order.event.title}`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto;">
-            <h2>Delivery deadline approaching</h2>
-            <p>Hi ${order.seller.name},</p>
-            <p>You have about 6 hours left to upload proof of delivery for order <strong>${order.orderNumber}</strong> (${order.event.title}).</p>
-            <p>If the deadline passes without delivery, the buyer will be automatically refunded and this may affect your seller tier.</p>
-            <a href="${process.env.CLIENT_URL}/seller/listings" style="display:inline-block;background:#16a34a;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Upload Now</a>
-          </div>
-        `,
+        ...deliveryReminderEmail({
+          sellerName: order.seller.name,
+          orderNumber: order.orderNumber,
+          eventTitle: order.event?.title,
+        }),
       });
     }
 

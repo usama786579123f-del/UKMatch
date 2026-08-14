@@ -11,18 +11,28 @@ const RESOLUTIONS = [
   { value: 'no_refund', label: 'No refund — release to seller' },
 ];
 
+const STATUS_FILTERS = [
+  { value: '', label: 'All' },
+  { value: 'open', label: 'Open' },
+  { value: 'resolved', label: 'Resolved' },
+  { value: 'closed', label: 'Closed' },
+];
+
 const Disputes = () => {
   const [disputes, setDisputes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState('');
   const [selected, setSelected] = useState(null);
   const [resolution, setResolution] = useState('');
   const [partialAmount, setPartialAmount] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const fetchDisputes = async () => {
+  const fetchDisputes = async (status) => {
+    setLoading(true);
     try {
-      const { data } = await api.get('/disputes/admin/all');
+      const params = status ? `?status=${status}` : '';
+      const { data } = await api.get(`/disputes/admin/all${params}`);
       setDisputes(data.data.disputes || []);
     } catch {
       setDisputes([]);
@@ -32,8 +42,8 @@ const Disputes = () => {
   };
 
   useEffect(() => {
-    fetchDisputes();
-  }, []);
+    fetchDisputes(statusFilter);
+  }, [statusFilter]);
 
   const openReview = (dispute) => {
     setSelected(dispute);
@@ -53,7 +63,7 @@ const Disputes = () => {
       });
       toast.success('Dispute resolved.');
       setSelected(null);
-      fetchDisputes();
+      fetchDisputes(statusFilter);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Could not resolve dispute.');
     } finally {
@@ -65,6 +75,23 @@ const Disputes = () => {
     <div className="p-6 sm:p-8">
       <h1 className="font-display text-display-sm text-ink">Dispute resolution</h1>
       <p className="mt-1 text-slate-500">Review and resolve buyer disputes within 48 hours.</p>
+
+      {/* Status filter tabs */}
+      <div className="mt-5 flex flex-wrap gap-2">
+        {STATUS_FILTERS.map((s) => (
+          <button
+            key={s.value}
+            onClick={() => setStatusFilter(s.value)}
+            className={`rounded-full px-3.5 py-1.5 text-sm font-medium capitalize transition-colors ${
+              statusFilter === s.value
+                ? 'bg-ink text-white'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
 
       <div className="card mt-6 overflow-x-auto p-5">
         {loading ? (

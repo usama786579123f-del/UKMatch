@@ -35,7 +35,11 @@ const EventCard = ({ event, size = 'md' }) => {
         <p className="text-xs font-semibold text-slate-400">
           {formatEventDate(event.eventDate)} · {formatEventTime(event.eventDate)}
         </p>
-        <p className="font-display text-sm font-semibold leading-snug text-ink line-clamp-2">
+        <p
+          className={`font-display font-bold leading-snug text-ink line-clamp-2 ${
+            isLarge ? 'text-xl' : 'text-base'
+          }`}
+        >
           {event.homeTeam} <span className="text-slate-400">vs</span> {event.awayTeam}
         </p>
         <p className="flex items-center gap-1 text-xs text-slate-500">

@@ -9,6 +9,7 @@ const escrowService = require('../services/escrowService');
 const logger = require('../utils/logger');
 const { sendEmail } = require('../services/emailService');
 const orderConfirmEmail = require('../templates/orderConfirmEmail');
+const kycStatusEmail = require('../templates/kycStatusEmail');
 
 /**
  * @route   POST /api/webhooks/stripe
@@ -80,11 +81,22 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
         const session = event.data.object;
         const userId = session.metadata?.userId;
         if (userId) {
-          await User.findByIdAndUpdate(userId, {
-            'kyc.status': 'verified',
-            'kyc.verifiedAt': new Date(),
-          });
+          const user = await User.findByIdAndUpdate(
+            userId,
+            {
+              'kyc.status': 'verified',
+              'kyc.verifiedAt': new Date(),
+            },
+            { new: true }
+          );
           logger.info(`KYC verified for user ${userId}`);
+
+          if (user?.email) {
+            await sendEmail({
+              to: user.email,
+              ...kycStatusEmail({ name: user.name, status: 'verified' }),
+            });
+          }
         }
         break;
       }
@@ -93,10 +105,24 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
         const session = event.data.object;
         const userId = session.metadata?.userId;
         if (userId) {
-          await User.findByIdAndUpdate(userId, {
-            'kyc.status': 'rejected',
-            'kyc.rejectionReason': session.last_error?.reason || 'Verification requires additional input',
-          });
+          const rejectionReason =
+            session.last_error?.reason || 'Verification requires additional input';
+
+          const user = await User.findByIdAndUpdate(
+            userId,
+            {
+              'kyc.status': 'rejected',
+              'kyc.rejectionReason': rejectionReason,
+            },
+            { new: true }
+          );
+
+          if (user?.email) {
+            await sendEmail({
+              to: user.email,
+              ...kycStatusEmail({ name: user.name, status: 'rejected', rejectionReason }),
+            });
+          }
         }
         break;
       }

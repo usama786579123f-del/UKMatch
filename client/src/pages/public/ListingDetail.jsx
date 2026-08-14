@@ -97,7 +97,7 @@ const ListingDetail = () => {
       // Demo mode: skip Stripe entirely, create a fake order instantly
       // and jump straight to the success screen.
       if (DEMO_MODE) {
-        mockData.createOrder(quantity);
+        mockData.createOrder(listing._id, quantity);
         setCheckoutStep('success');
         return;
       }

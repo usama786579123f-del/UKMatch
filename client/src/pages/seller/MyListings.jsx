@@ -28,10 +28,10 @@ const MyListings = () => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
 
-  // Demo-mode only: the single fake order tied to the demo listing, so the
-  // seller can walk through "upload ticket" without a real backend.
-  const [demoOrder, setDemoOrder] = useState(null);
-  const [uploadingProof, setUploadingProof] = useState(false);
+  // Demo-mode only: all fake orders across the demo listings, so the
+  // seller can walk through "upload ticket" for each one.
+  const [demoOrders, setDemoOrders] = useState([]);
+  const [uploadingId, setUploadingId] = useState(null);
 
   const fetchListings = async () => {
     try {
@@ -45,13 +45,13 @@ const MyListings = () => {
     }
   };
 
-  const fetchDemoOrder = async () => {
+  const fetchDemoOrders = async () => {
     if (!DEMO_MODE) return;
     try {
       const { data } = await api.get('/orders/my-sales');
-      setDemoOrder(data.data.orders?.[0] || null);
+      setDemoOrders(data.data.orders || []);
     } catch {
-      setDemoOrder(null);
+      setDemoOrders([]);
     }
   };
 
@@ -60,7 +60,7 @@ const MyListings = () => {
   }, [filter]);
 
   useEffect(() => {
-    fetchDemoOrder();
+    fetchDemoOrders();
   }, []);
 
   const handleWithdraw = async (listingId) => {
@@ -74,20 +74,19 @@ const MyListings = () => {
     }
   };
 
-  const handleDemoUploadProof = async () => {
-    if (!demoOrder) return;
-    setUploadingProof(true);
+  const handleDemoUploadProof = async (order) => {
+    setUploadingId(order._id);
     try {
-      await api.post(`/orders/${demoOrder._id}/upload-proof`, {
+      await api.post(`/orders/${order._id}/upload-proof`, {
         proofFileUrl: 'https://example.com/demo-ticket.pdf',
       });
       toast.success('Ticket uploaded (demo). Buyer has been notified.');
-      fetchDemoOrder();
+      fetchDemoOrders();
       fetchListings();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Could not upload ticket.');
     } finally {
-      setUploadingProof(false);
+      setUploadingId(null);
     }
   };
 
@@ -111,41 +110,52 @@ const MyListings = () => {
         )}
       </div>
 
-      {/* Demo-mode order fulfillment card */}
-      {DEMO_MODE && demoOrder ? (
-        <div className="card mb-6 flex flex-col gap-3 border border-primary-100 bg-primary-50/40 p-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-primary-600">
-              Demo order · {demoOrder.orderNumber}
-            </p>
-            <p className="mt-1 font-semibold text-ink">
-              {demoOrder.event?.homeTeam} <span className="text-slate-400">vs</span>{' '}
-              {demoOrder.event?.awayTeam}
-            </p>
-            <p className={`mt-1 flex items-center gap-1.5 text-sm ${DEMO_STATUS_COPY[demoOrder.status]?.tone || 'text-slate-500'}`}>
-              {demoOrder.status === 'completed' ? (
-                <CheckCircle2 size={14} />
-              ) : (
-                <Clock size={14} />
-              )}
-              {DEMO_STATUS_COPY[demoOrder.status]?.label || demoOrder.status}
-            </p>
-          </div>
-
-          {demoOrder.status === 'paid_escrow_held' ? (
-            <button
-              onClick={handleDemoUploadProof}
-              disabled={uploadingProof}
-              className="btn-primary shrink-0"
+      {/* Demo-mode order fulfillment cards (one per purchased demo listing) */}
+      {DEMO_MODE && demoOrders.length > 0 ? (
+        <div className="mb-6 flex flex-col gap-3">
+          {demoOrders.map((order) => (
+            <div
+              key={order._id}
+              className="card flex flex-col gap-3 border border-primary-100 bg-primary-50/40 p-5 sm:flex-row sm:items-center sm:justify-between"
             >
-              <Upload size={15} />
-              {uploadingProof ? 'Uploading...' : 'Upload ticket (demo)'}
-            </button>
-          ) : demoOrder.status === 'proof_uploaded' ? (
-            <span className="shrink-0 text-sm text-slate-500">
-              Ask the buyer to confirm delivery from their orders page.
-            </span>
-          ) : null}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary-600">
+                  Demo order · {order.orderNumber}
+                </p>
+                <p className="mt-1 font-semibold text-ink">
+                  {order.event?.homeTeam} <span className="text-slate-400">vs</span>{' '}
+                  {order.event?.awayTeam}
+                </p>
+                <p
+                  className={`mt-1 flex items-center gap-1.5 text-sm ${
+                    DEMO_STATUS_COPY[order.status]?.tone || 'text-slate-500'
+                  }`}
+                >
+                  {order.status === 'completed' ? (
+                    <CheckCircle2 size={14} />
+                  ) : (
+                    <Clock size={14} />
+                  )}
+                  {DEMO_STATUS_COPY[order.status]?.label || order.status}
+                </p>
+              </div>
+
+              {order.status === 'paid_escrow_held' ? (
+                <button
+                  onClick={() => handleDemoUploadProof(order)}
+                  disabled={uploadingId === order._id}
+                  className="btn-primary shrink-0"
+                >
+                  <Upload size={15} />
+                  {uploadingId === order._id ? 'Uploading...' : 'Upload ticket (demo)'}
+                </button>
+              ) : order.status === 'proof_uploaded' ? (
+                <span className="shrink-0 text-sm text-slate-500">
+                  Ask the buyer to confirm delivery from their orders page.
+                </span>
+              ) : null}
+            </div>
+          ))}
         </div>
       ) : null}
 

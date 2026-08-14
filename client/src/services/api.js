@@ -59,15 +59,16 @@ const mockGet = (url) => {
     return ok({ listing: mockData.getListingForDisplay() });
   }
   if (path === '/orders/my-orders') {
-    const order = mockData.readOrder();
-    return ok({ orders: order ? [order] : [] });
+    const orders = mockData.readOrders();
+    return ok({ orders });
   }
   if (path === '/orders/my-sales') {
-    const order = mockData.readOrder();
-    return ok({ orders: order ? [order] : [] });
+    const orders = mockData.readOrders();
+    return ok({ orders });
   }
   if (path.startsWith('/orders/')) {
-    const order = mockData.readOrder();
+    const id = path.split('/')[2];
+    const order = mockData.getOrderById(id);
     return order ? ok({ order }) : null;
   }
   if (path.startsWith('/reviews/user/')) {
@@ -82,14 +83,19 @@ const mockGet = (url) => {
 
 const mockPost = (url) => {
   const path = getPath(url);
-  if (/^\/orders\/[^/]+\/confirm-delivery$/.test(path)) {
-    const order = mockData.confirmDelivery();
+
+  const confirmMatch = path.match(/^\/orders\/([^/]+)\/confirm-delivery$/);
+  if (confirmMatch) {
+    const order = mockData.confirmDelivery(confirmMatch[1]);
     return order ? ok({ order }) : null;
   }
-  if (/^\/orders\/[^/]+\/upload-proof$/.test(path)) {
-    const order = mockData.markProofUploaded();
+
+  const proofMatch = path.match(/^\/orders\/([^/]+)\/upload-proof$/);
+  if (proofMatch) {
+    const order = mockData.markProofUploaded(proofMatch[1]);
     return order ? ok({ order }) : null;
   }
+
   return null;
 };
 

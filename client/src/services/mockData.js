@@ -1,4 +1,5 @@
-const STORAGE_KEY = 'mp_demo_order';
+const ORDERS_KEY = 'mp_demo_orders';   // ab array of orders
+const TOTAL_QTY = 15;
 
 const DEMO_VENUE = {
   _id: 'demo-venue-1',
@@ -37,7 +38,7 @@ const DEMO_LISTING = {
   section: 'Shortside Lower',
   row: '12',
   seats: '',
-  quantity: 2,
+  quantity: TOTAL_QTY,          // 👈 ab 15
   ticketType: 'e-ticket',
   pricePerTicket: 65,
   currency: 'GBP',
@@ -47,47 +48,65 @@ const DEMO_LISTING = {
   viewCount: 24,
 };
 
-const readOrder = () => {
+// ---------- orders (ab multiple) ----------
+
+const readOrders = () => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const raw = localStorage.getItem(ORDERS_KEY);
+    return raw ? JSON.parse(raw) : [];
   } catch {
-    return null;
+    return [];
   }
 };
 
-const writeOrder = (order) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(order));
-  return order;
+const writeOrders = (orders) => {
+  localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+  return orders;
 };
 
-const clearOrder = () => {
-  localStorage.removeItem(STORAGE_KEY);
+const clearOrders = () => {
+  localStorage.removeItem(ORDERS_KEY);
 };
 
-const isListingSold = () => {
-  const order = readOrder();
-  return !!order && !['cancelled', 'refunded'].includes(order.status);
+// kitni tickets ab tak becheen ja chuki hain (cancelled/refunded na ginain)
+const getSoldQty = () => {
+  const orders = readOrders();
+  return orders
+    .filter((o) => !['cancelled', 'refunded'].includes(o.status))
+    .reduce((sum, o) => sum + o.quantity, 0);
 };
+
+const getRemainingQty = () => Math.max(0, TOTAL_QTY - getSoldQty());
+
+const isListingSold = () => getRemainingQty() <= 0;
 
 const getListingForDisplay = () => ({
   ...DEMO_LISTING,
+  quantity: getRemainingQty(),
   status: isListingSold() ? 'sold' : 'active',
 });
 
+// naya order banata hai — sirf tab jab stock available ho
 const createOrder = (quantity) => {
-  const subtotal = DEMO_LISTING.pricePerTicket * quantity;
+  const remaining = getRemainingQty();
+  const qty = Math.min(quantity, remaining);
+  if (qty <= 0) return null;
+
+  const subtotal = DEMO_LISTING.pricePerTicket * qty;
   const platformFee = Math.round(subtotal * 0.1 * 100) / 100;
   const totalAmount = subtotal + platformFee;
 
+  const orders = readOrders();
+  const orderId = `demo-order-${orders.length + 1}`;
+
   const order = {
-    _id: 'demo-order-1',
-    orderNumber: 'MP-DEMO-0001',
+    _id: orderId,
+    orderNumber: `MP-DEMO-${String(orders.length + 1).padStart(4, '0')}`,
     buyer: { _id: 'demo-buyer-1', name: 'Demo Buyer', email: 'buyer@demo.com' },
     seller: DEMO_SELLER,
     listing: DEMO_LISTING,
     event: DEMO_EVENT,
-    quantity,
+    quantity: qty,
     pricePerTicket: DEMO_LISTING.pricePerTicket,
     subtotal,
     platformFee,
@@ -102,11 +121,16 @@ const createOrder = (quantity) => {
     createdAt: new Date().toISOString(),
   };
 
-  return writeOrder(order);
+  orders.push(order);
+  writeOrders(orders);
+  return order;
 };
 
-const markProofUploaded = () => {
-  const order = readOrder();
+const getOrderById = (id) => readOrders().find((o) => o._id === id) || null;
+
+const markProofUploaded = (orderId) => {
+  const orders = readOrders();
+  const order = orders.find((o) => o._id === orderId);
   if (!order) return null;
   order.status = 'proof_uploaded';
   order.proofFileUrl = 'https://example.com/demo-ticket.pdf';
@@ -114,28 +138,34 @@ const markProofUploaded = () => {
   order.graceReleaseAt = new Date(
     new Date(order.matchDate).getTime() + 24 * 60 * 60 * 1000
   ).toISOString();
-  return writeOrder(order);
+  writeOrders(orders);
+  return order;
 };
 
-const confirmDelivery = () => {
-  const order = readOrder();
+const confirmDelivery = (orderId) => {
+  const orders = readOrders();
+  const order = orders.find((o) => o._id === orderId);
   if (!order) return null;
   order.status = 'completed';
   order.buyerConfirmedAt = new Date().toISOString();
   order.fundsReleasedAt = new Date().toISOString();
-  return writeOrder(order);
+  writeOrders(orders);
+  return order;
 };
 
 export default {
   DEMO_EVENT,
   DEMO_LISTING,
   DEMO_SELLER,
-  readOrder,
-  writeOrder,
-  clearOrder,
+  TOTAL_QTY,
+  readOrders,
+  writeOrders,
+  clearOrders,
   isListingSold,
+  getRemainingQty,
   getListingForDisplay,
   createOrder,
+  getOrderById,
   markProofUploaded,
   confirmDelivery,
 };

@@ -37,77 +37,37 @@ const ok = (data, meta) => ({
 });
 
 const getPath = (url) => url.split('?')[0];
-const getQuery = (url) => {
-  const q = url.split('?')[1];
-  return q ? Object.fromEntries(new URLSearchParams(q)) : {};
-};
-
-const applyEventFilters = (events, query) => {
-  let filtered = [...events];
-
-  if (query.league) {
-    filtered = filtered.filter((e) => e.league === query.league);
-  }
-  if (query.q) {
-    const term = query.q.toLowerCase();
-    filtered = filtered.filter(
-      (e) =>
-        e.homeTeam.toLowerCase().includes(term) || e.awayTeam.toLowerCase().includes(term)
-    );
-  }
-  if (query.dateFrom) {
-    filtered = filtered.filter((e) => new Date(e.eventDate) >= new Date(query.dateFrom));
-  }
-  if (query.dateTo) {
-    filtered = filtered.filter((e) => new Date(e.eventDate) <= new Date(query.dateTo));
-  }
-  if (query.priceMin) {
-    filtered = filtered.filter((e) => e.lowestPrice >= parseFloat(query.priceMin));
-  }
-  if (query.priceMax) {
-    filtered = filtered.filter((e) => e.lowestPrice <= parseFloat(query.priceMax));
-  }
-
-  if (query.sort === 'price_asc') filtered.sort((a, b) => a.lowestPrice - b.lowestPrice);
-  else if (query.sort === 'price_desc') filtered.sort((a, b) => b.lowestPrice - a.lowestPrice);
-  else filtered.sort((a, b) => new Date(a.eventDate) - new Date(b.eventDate));
-
-  return filtered;
-};
 
 const mockGet = (url) => {
   const path = getPath(url);
-  const query = getQuery(url);
 
   if (path === '/events/featured') {
-    return ok({ events: mockData.DEMO_EVENTS.filter((e) => e.isFeatured) });
+    return ok({ events: [mockData.DEMO_EVENT] });
   }
   if (path === '/events') {
-    return ok({ events: applyEventFilters(mockData.DEMO_EVENTS, query) });
+    return ok({ events: [mockData.DEMO_EVENT] });
   }
   if (path.startsWith('/events/')) {
-    const slug = path.split('/events/')[1];
-    const event = mockData.findEventBySlug(slug);
-    if (!event) return ok({ event: null, listings: [] });
-    return ok({ event, listings: mockData.getListingsForEventDisplay(event._id) });
+    const listing = mockData.getListingForDisplay();
+    const listings = listing.status === 'active' ? [listing] : [];
+    return ok({ event: mockData.DEMO_EVENT, listings });
   }
   if (path === '/listings/my-listings') {
-    return ok({ listings: mockData.getAllListingsForDisplay() });
+    return ok({ listings: [mockData.getListingForDisplay()] });
   }
   if (path.startsWith('/listings/') && !path.includes('price-suggestion')) {
-    const listingId = path.split('/listings/')[1];
-    const listing = mockData.getListingForDisplay(listingId);
-    return ok({ listing });
+    return ok({ listing: mockData.getListingForDisplay() });
   }
   if (path === '/orders/my-orders') {
-    return ok({ orders: mockData.readOrders() });
+    const order = mockData.readOrder();
+    return ok({ orders: order ? [order] : [] });
   }
   if (path === '/orders/my-sales') {
-    return ok({ orders: mockData.readOrders() });
+    const order = mockData.readOrder();
+    return ok({ orders: order ? [order] : [] });
   }
   if (path.startsWith('/orders/')) {
-    const orderId = path.split('/orders/')[1];
-    const order = mockData.findOrder(orderId);
+    const order = mockData.readOrder();
     return order ? ok({ order }) : null;
   }
   if (path.startsWith('/reviews/user/')) {
@@ -120,24 +80,14 @@ const mockGet = (url) => {
   return null;
 };
 
-const mockPost = (url, data) => {
+const mockPost = (url) => {
   const path = getPath(url);
-
-  if (path === '/orders/checkout') {
-    // Not used directly in demo mode (ListingDetail creates the order via
-    // mockData.createOrder before this would ever be called), but kept as
-    // a safety net in case something calls it.
-    const order = mockData.createOrder(data?.listingId, data?.quantity || 1);
-    return order ? ok({ orderId: order._id, orderNumber: order.orderNumber }) : null;
-  }
   if (/^\/orders\/[^/]+\/confirm-delivery$/.test(path)) {
-    const orderId = path.split('/orders/')[1].split('/')[0];
-    const order = mockData.confirmDelivery(orderId);
+    const order = mockData.confirmDelivery();
     return order ? ok({ order }) : null;
   }
   if (/^\/orders\/[^/]+\/upload-proof$/.test(path)) {
-    const orderId = path.split('/orders/')[1].split('/')[0];
-    const order = mockData.markProofUploaded(orderId);
+    const order = mockData.markProofUploaded();
     return order ? ok({ order }) : null;
   }
   return null;
@@ -154,7 +104,7 @@ if (DEMO_MODE) {
   };
 
   api.post = async (url, data, config) => {
-    const mocked = mockPost(url, data);
+    const mocked = mockPost(url);
     if (mocked) return mocked;
     return realPost(url, data, config);
   };

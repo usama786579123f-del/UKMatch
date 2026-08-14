@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements } from '@stripe/react-stripe-js';
-import { PayPalScriptProvider } from '@paypal/react-paypal-js';
 import {
   Armchair,
   Calendar,
@@ -12,7 +11,6 @@ import {
   ChevronLeft,
   ShieldCheck,
   CheckCircle2,
-  CreditCard,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -21,11 +19,12 @@ import { formatCurrency } from '../../utils/formatCurrency';
 import { formatEventDate } from '../../utils/formatDate';
 import CheckoutSummary from '../../components/buyer/CheckoutSummary';
 import StripeCheckoutForm from '../../components/buyer/StripeCheckoutForm';
-import PayPalCheckoutButton from '../../components/buyer/PayPalCheckoutButton';
 import PriceEstimate from '../../components/public/PriceEstimate';
+import { useSEO } from '../../hooks/useSEO';
+import { DEMO_MODE } from '../../utils/demoMode';
+import mockData from '../../services/mockData';
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
-const paypalClientId = import.meta.env.VITE_PAYPAL_CLIENT_ID;
 
 const TICKET_TYPE_LABELS = {
   'e-ticket': 'E-ticket',
@@ -45,12 +44,29 @@ const ListingDetail = () => {
   const [quantity, setQuantity] = useState(1);
 
   const [checkoutStep, setCheckoutStep] = useState('view'); // view | paying | success
-  const [paymentMethod, setPaymentMethod] = useState('card'); // card | paypal
   const [clientSecret, setClientSecret] = useState('');
-  const [paypalOrderId, setPaypalOrderId] = useState('');
-  const [activeOrderId, setActiveOrderId] = useState('');
   const [orderNumber, setOrderNumber] = useState('');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+
+  useSEO({
+    title: listing ? `${listing.event.homeTeam} vs ${listing.event.awayTeam} - ${listing.section}` : 'Listing',
+    description: listing
+      ? `${listing.section} tickets for ${listing.event.homeTeam} vs ${listing.event.awayTeam}, from £${listing.pricePerTicket}. Escrow protected purchase.`
+      : undefined,
+    jsonLd: listing
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'Product',
+          name: `${listing.event.homeTeam} vs ${listing.event.awayTeam} - ${listing.section}`,
+          offers: {
+            '@type': 'Offer',
+            price: listing.pricePerTicket,
+            priceCurrency: 'GBP',
+            availability: listing.status === 'active' ? 'https://schema.org/InStock' : 'https://schema.org/SoldOut',
+          },
+        }
+      : null,
+  });
 
   useEffect(() => {
     const fetchListing = async () => {
@@ -78,23 +94,20 @@ const ListingDetail = () => {
 
     setCheckoutLoading(true);
     try {
-      if (paymentMethod === 'card') {
-        const response = await api.post('/orders/checkout', {
-          listingId: listing._id,
-          quantity,
-        });
-        setClientSecret(response.data.data.clientSecret);
-        setActiveOrderId(response.data.data.orderId);
-        setOrderNumber(response.data.data.orderNumber);
-      } else {
-        const response = await api.post('/orders/checkout-paypal', {
-          listingId: listing._id,
-          quantity,
-        });
-        setPaypalOrderId(response.data.data.paypalOrderId);
-        setActiveOrderId(response.data.data.orderId);
-        setOrderNumber(response.data.data.orderNumber);
+      // Demo mode: skip Stripe entirely, create a fake order instantly
+      // and jump straight to the success screen.
+      if (DEMO_MODE) {
+        mockData.createOrder(quantity);
+        setCheckoutStep('success');
+        return;
       }
+
+      const response = await api.post('/orders/checkout', {
+        listingId: listing._id,
+        quantity,
+      });
+      setClientSecret(response.data.data.clientSecret);
+      setOrderNumber(response.data.data.orderNumber);
       setCheckoutStep('paying');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Could not start checkout. Please try again.');
@@ -256,43 +269,14 @@ const ListingDetail = () => {
                   </div>
                 </div>
 
-                <div className="mt-5">
-                  <p className="mb-1.5 text-sm font-medium text-ink">Payment method</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('card')}
-                      className={
-                        'flex items-center justify-center gap-1.5 rounded-xl border-2 px-3 py-2 text-sm font-medium transition-colors ' +
-                        (paymentMethod === 'card'
-                          ? 'border-primary-500 bg-primary-50 text-primary-700'
-                          : 'border-slate-200 text-ink hover:border-slate-300')
-                      }
-                    >
-                      <CreditCard size={15} /> Card
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('paypal')}
-                      disabled={!paypalClientId}
-                      className={
-                        'flex items-center justify-center gap-1.5 rounded-xl border-2 px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ' +
-                        (paymentMethod === 'paypal'
-                          ? 'border-primary-500 bg-primary-50 text-primary-700'
-                          : 'border-slate-200 text-ink hover:border-slate-300')
-                      }
-                    >
-                      PayPal
-                    </button>
-                  </div>
-                </div>
-
                 <button
                   onClick={handleBuyClick}
                   disabled={checkoutLoading}
                   className="btn-primary mt-5 w-full justify-center"
                 >
-                  {checkoutLoading ? 'Starting checkout...' : 'Buy ' + (quantity > 1 ? quantity + ' tickets' : 'ticket')}
+                  {checkoutLoading
+                    ? 'Starting checkout...'
+                    : 'Buy ' + (quantity > 1 ? quantity + ' tickets' : 'ticket')}
                 </button>
 
                 <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-slate-400">
@@ -306,22 +290,12 @@ const ListingDetail = () => {
                   <h3 className="mb-4 font-display text-sm font-semibold text-ink">
                     Payment details
                   </h3>
-                  {paymentMethod === 'card' ? (
-                    <Elements stripe={stripePromise} options={{ clientSecret: clientSecret }}>
-                      <StripeCheckoutForm
-                        orderNumber={orderNumber}
-                        onSuccess={() => setCheckoutStep('success')}
-                      />
-                    </Elements>
-                  ) : (
-                    <PayPalScriptProvider options={{ clientId: paypalClientId, currency: 'GBP' }}>
-                      <PayPalCheckoutButton
-                        orderId={activeOrderId}
-                        paypalOrderId={paypalOrderId}
-                        onSuccess={() => setCheckoutStep('success')}
-                      />
-                    </PayPalScriptProvider>
-                  )}
+                  <Elements stripe={stripePromise} options={{ clientSecret: clientSecret }}>
+                    <StripeCheckoutForm
+                      orderNumber={orderNumber}
+                      onSuccess={() => setCheckoutStep('success')}
+                    />
+                  </Elements>
                 </div>
               </>
             )}
